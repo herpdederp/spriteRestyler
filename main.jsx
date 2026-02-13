@@ -5,7 +5,7 @@ import SpriteTransformer from "./sprite-transformer";
 
 const TABS = [
   { id: "restyler", label: "Restyler", icon: "🎨", desc: "Color styles" },
-  { id: "transformer", label: "Transformer", icon: "🔮", desc: "Edge effects" },
+  { id: "transformer", label: "Transformer", icon: "🔮", desc: "Structural effects" },
 ];
 
 function App() {
