@@ -177,6 +177,138 @@ const STYLES = [
       return [nr, ng, nb, a];
     },
   },
+  {
+    id: "pixel_art",
+    name: "Pixel Art",
+    desc: "Enhanced pixelation",
+    icon: "🕹️",
+    apply: (r, g, b, a) => {
+      const levels = 6;
+      const step = 255 / (levels - 1);
+      const nr = Math.round(Math.round(r / step) * step);
+      const ng = Math.round(Math.round(g / step) * step);
+      const nb = Math.round(Math.round(b / step) * step);
+      return [nr, ng, nb, a];
+    },
+  },
+  {
+    id: "outline",
+    name: "Outline",
+    desc: "Black border around content",
+    icon: "✏️",
+    apply: (r, g, b, a) => {
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (lum < 180) return [0, 0, 0, a];
+      return [255, 255, 255, a];
+    },
+  },
+  {
+    id: "silhouette",
+    name: "Silhouette",
+    desc: "Solid fill",
+    icon: "👤",
+    apply: (r, g, b, a) => {
+      return [20, 20, 30, a];
+    },
+  },
+  {
+    id: "invert",
+    name: "Invert",
+    desc: "Color inversion",
+    icon: "🔄",
+    apply: (r, g, b, a) => {
+      return [255 - r, 255 - g, 255 - b, a];
+    },
+  },
+  {
+    id: "monochrome",
+    name: "Monochrome",
+    desc: "Black & white",
+    icon: "⬛",
+    apply: (r, g, b, a) => {
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      return [lum, lum, lum, a];
+    },
+  },
+  {
+    id: "sepia",
+    name: "Sepia",
+    desc: "Vintage tone",
+    icon: "🎞️",
+    apply: (r, g, b, a) => {
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const nr = Math.min(255, lum + 40);
+      const ng = Math.min(255, lum + 15);
+      const nb = Math.min(255, lum - 20);
+      return [nr, ng, Math.max(0, nb), a];
+    },
+  },
+  {
+    id: "cyberpunk",
+    name: "Cyberpunk",
+    desc: "Neon purple & cyan",
+    icon: "🌆",
+    apply: (r, g, b, a) => {
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const t = lum / 255;
+      const nr = Math.min(255, lum * 0.4 + 140 * (1 - t) + r * 0.15);
+      const ng = Math.min(255, lum * 0.15 + 30 * t + g * 0.1);
+      const nb = Math.min(255, lum * 0.45 + 180 * t + b * 0.1);
+      return [nr, ng, nb, a];
+    },
+  },
+  {
+    id: "fire",
+    name: "Fire",
+    desc: "Red/orange/yellow gradient",
+    icon: "🔥",
+    apply: (r, g, b, a) => {
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      let nr, ng, nb;
+      if (lum < 0.33) {
+        nr = Math.min(255, lum * 3 * 200 + 55);
+        ng = Math.min(255, lum * 3 * 20);
+        nb = 0;
+      } else if (lum < 0.66) {
+        const t = (lum - 0.33) * 3;
+        nr = 255;
+        ng = Math.min(255, t * 180 + 20);
+        nb = 0;
+      } else {
+        const t = (lum - 0.66) * 3;
+        nr = 255;
+        ng = Math.min(255, 180 + t * 75);
+        nb = Math.min(255, t * 120);
+      }
+      return [nr, ng, nb, a];
+    },
+  },
+  {
+    id: "ice",
+    name: "Ice",
+    desc: "Cyan/blue/white gradient",
+    icon: "🧊",
+    apply: (r, g, b, a) => {
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      let nr, ng, nb;
+      if (lum < 0.33) {
+        nr = Math.min(255, lum * 3 * 30);
+        ng = Math.min(255, lum * 3 * 60 + 20);
+        nb = Math.min(255, lum * 3 * 140 + 80);
+      } else if (lum < 0.66) {
+        const t = (lum - 0.33) * 3;
+        nr = Math.min(255, 30 + t * 80);
+        ng = Math.min(255, 80 + t * 140);
+        nb = Math.min(255, 220 + t * 35);
+      } else {
+        const t = (lum - 0.66) * 3;
+        nr = Math.min(255, 110 + t * 145);
+        ng = Math.min(255, 220 + t * 35);
+        nb = 255;
+      }
+      return [nr, ng, nb, a];
+    },
+  },
 ];
 
 function SpriteCanvas({ imageData, style, zoom, label, isOriginal }) {
