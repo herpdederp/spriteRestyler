@@ -258,6 +258,20 @@ const STYLES = [
     },
   },
   {
+    id: "cyberpunk_v2",
+    name: "Cyberpunk v2",
+    desc: "Neon purple & cyan shadows",
+    icon: "🌃",
+    apply: (r, g, b, a) => {
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      // Shadows → cyan, highlights → neon purple
+      const nr = Math.min(255, lum * 180 + (1 - lum) * 0);
+      const ng = Math.min(255, lum * 20 + (1 - lum) * 220);
+      const nb = Math.min(255, lum * 255 + (1 - lum) * 240);
+      return [nr, ng, nb, a];
+    },
+  },
+  {
     id: "fire",
     name: "Fire",
     desc: "Red/orange/yellow gradient",

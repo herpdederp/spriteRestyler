@@ -284,74 +284,395 @@ function applyWood(srcImageData, seed) {
 }
 
 function applyPlantGrowth(srcImageData, seed) {
-  const pad = 16;
+  const pad = 20;
   const { data: src, width: ow, height: oh } = srcImageData;
   const { data, width: w, height: h } = expandCanvas(srcImageData, pad);
   const rng = mulberry32(seed);
 
-  // Tint existing pixels slightly green
+  // Tint existing pixels green
   for (let y = pad; y < pad + oh; y++) {
     for (let x = pad; x < pad + ow; x++) {
       const i = (y * w + x) * 4;
       if (data[i + 3] > 20) {
-        data[i + 1] = Math.min(255, data[i + 1] * 0.9 + 20);
+        data[i] = Math.max(0, data[i] * 0.75);
+        data[i + 1] = Math.min(255, data[i + 1] * 0.85 + 30);
+        data[i + 2] = Math.max(0, data[i + 2] * 0.6);
       }
     }
   }
 
   const edges = findEdges(data, w, h, rng);
+  const edgeOnly = edges.filter((e) => e.edge);
 
-  // Vines
-  for (let v = 0; v < Math.min(edges.length / 20, 18); v++) {
-    const edge = edges[Math.floor(rng() * edges.length)];
+  // Moss on surface edges
+  for (const edge of edgeOnly) {
+    if (rng() > 0.45) continue;
+    const mx = edge.x, my = edge.y;
+    const i = (my * w + mx) * 4;
+    if (data[i + 3] > 20) {
+      const g = 60 + Math.floor(rng() * 50);
+      data[i] = 20 + Math.floor(rng() * 20);
+      data[i + 1] = g;
+      data[i + 2] = 10 + Math.floor(rng() * 15);
+    }
+  }
+
+  // Branching vines from edges
+  const vineCount = Math.min(Math.floor(edges.length / 8), 40);
+  for (let v = 0; v < vineCount; v++) {
+    const edge = edgeOnly.length > 0
+      ? edgeOnly[Math.floor(rng() * edgeOnly.length)]
+      : edges[Math.floor(rng() * edges.length)];
     let vx = edge.x + edge.dx;
     let vy = edge.y + edge.dy;
-    const vineLen = Math.floor(rng() * 10) + 4;
-    let dir = rng() > 0.5 ? 1 : -1;
-    const isVert = edge.dx !== 0;
+    const vineLen = Math.floor(rng() * 14) + 6;
+    let dirX = edge.dx, dirY = edge.dy;
+    // Add some lateral drift
+    if (dirX === 0 && dirY === 0) { dirX = rng() > 0.5 ? 1 : -1; }
 
     for (let i = 0; i < vineLen; i++) {
-      const green = 80 + Math.floor(rng() * 80);
-      const darkG = 40 + Math.floor(rng() * 40);
-      setPixelSolid(data, w, vx, vy, darkG, green, 20, 230);
+      const t = i / vineLen;
+      const green = 70 + Math.floor(rng() * 90);
+      const darkG = 30 + Math.floor(rng() * 35);
+      const alpha = Math.floor(240 - t * 60);
+      setPixelSolid(data, w, vx, vy, darkG, green, 15, alpha);
 
-      // Occasional leaf
-      if (rng() > 0.6 && i > 1) {
+      // Leaf clusters along vine
+      if (rng() > 0.45 && i > 1) {
         const ldir = rng() > 0.5 ? 1 : -1;
-        if (isVert) {
-          setPixelSolid(data, w, vx, vy + ldir, 30, green + 30, 15, 200);
-          setPixelSolid(data, w, vx, vy + ldir * 2, 25, green + 40, 10, 160);
+        const leafG = green + 20 + Math.floor(rng() * 30);
+        const leafR = 20 + Math.floor(rng() * 25);
+        // 2-3 pixel leaf
+        if (Math.abs(dirX) >= Math.abs(dirY)) {
+          setPixelSolid(data, w, vx, vy + ldir, leafR, leafG, 12, alpha - 20);
+          setPixelSolid(data, w, vx, vy + ldir * 2, leafR - 5, leafG + 10, 8, alpha - 60);
+          if (rng() > 0.5) setPixelSolid(data, w, vx + (rng() > 0.5 ? 1 : -1), vy + ldir, leafR - 5, leafG + 5, 10, alpha - 40);
         } else {
-          setPixelSolid(data, w, vx + ldir, vy, 30, green + 30, 15, 200);
-          setPixelSolid(data, w, vx + ldir * 2, vy, 25, green + 40, 10, 160);
+          setPixelSolid(data, w, vx + ldir, vy, leafR, leafG, 12, alpha - 20);
+          setPixelSolid(data, w, vx + ldir * 2, vy, leafR - 5, leafG + 10, 8, alpha - 60);
+          if (rng() > 0.5) setPixelSolid(data, w, vx + ldir, vy + (rng() > 0.5 ? 1 : -1), leafR - 5, leafG + 5, 10, alpha - 40);
         }
       }
 
-      // Grow vine
-      if (isVert) {
-        vy += dir;
-        if (rng() > 0.6) vx += edge.dx > 0 ? 1 : -1;
-        if (rng() > 0.8) dir *= -1;
-      } else {
-        vx += dir;
-        if (rng() > 0.6) vy += edge.dy > 0 ? 1 : -1;
-        if (rng() > 0.8) dir *= -1;
+      // Branch off
+      if (rng() > 0.82 && i > 2 && i < vineLen - 2) {
+        const bLen = Math.floor(rng() * 5) + 2;
+        let bx = vx, by = vy;
+        const bdir = rng() > 0.5 ? 1 : -1;
+        for (let j = 0; j < bLen; j++) {
+          if (Math.abs(dirX) >= Math.abs(dirY)) { by += bdir; if (rng() > 0.5) bx += dirX; }
+          else { bx += bdir; if (rng() > 0.5) by += dirY; }
+          const bGreen = 65 + Math.floor(rng() * 70);
+          setPixelSolid(data, w, bx, by, 30, bGreen, 12, Math.floor(200 - (j / bLen) * 80));
+          // Leaf at branch tip
+          if (j === bLen - 1) {
+            const lg = bGreen + 30;
+            setPixelSolid(data, w, bx + (rng() > 0.5 ? 1 : -1), by, 25, Math.min(255, lg), 10, 170);
+            setPixelSolid(data, w, bx, by + (rng() > 0.5 ? 1 : -1), 25, Math.min(255, lg), 10, 170);
+          }
+        }
+      }
+
+      // Advance vine with wandering
+      vx += dirX;
+      vy += dirY;
+      if (rng() > 0.55) { if (dirX !== 0) vy += rng() > 0.5 ? 1 : -1; else vx += rng() > 0.5 ? 1 : -1; }
+      if (rng() > 0.85) { dirX += Math.round(rng() - 0.5); dirY += Math.round(rng() - 0.5); }
+    }
+
+    // Leaf cluster at vine tip
+    const tipG = 90 + Math.floor(rng() * 60);
+    for (let d = 0; d < 3; d++) {
+      const lx = vx + Math.round(rng() * 2 - 1);
+      const ly = vy + Math.round(rng() * 2 - 1);
+      setPixelSolid(data, w, lx, ly, 20, Math.min(255, tipG + Math.floor(rng() * 30)), 8, 180);
+    }
+  }
+
+  // Hanging vines (droop downward from top/side edges)
+  const hangCount = Math.min(Math.floor(edgeOnly.length / 12), 15);
+  for (let hv = 0; hv < hangCount; hv++) {
+    const edge = edgeOnly[Math.floor(rng() * edgeOnly.length)];
+    if (edge.dy > 0 || (edge.dy === 0 && rng() > 0.5)) continue; // prefer top and side edges
+    let hx = edge.x + edge.dx;
+    let hy = edge.y + edge.dy;
+    const hangLen = Math.floor(rng() * 10) + 4;
+    for (let i = 0; i < hangLen; i++) {
+      const green = 55 + Math.floor(rng() * 60);
+      setPixelSolid(data, w, hx, hy, 25, green, 15, Math.floor(220 - (i / hangLen) * 80));
+      hy += 1; // grow downward
+      if (rng() > 0.7) hx += rng() > 0.5 ? 1 : -1;
+      // Small dangling leaf
+      if (i === hangLen - 1 || (rng() > 0.75 && i > 2)) {
+        setPixelSolid(data, w, hx - 1, hy, 20, green + 25, 10, 160);
+        setPixelSolid(data, w, hx + 1, hy, 20, green + 25, 10, 160);
       }
     }
   }
 
-  // Small flowers
-  for (let f = 0; f < 5; f++) {
-    const edge = edges[Math.floor(rng() * edges.length)];
-    const fx = edge.x + edge.dx * 3;
-    const fy = edge.y + edge.dy * 3;
-    const colors = [[255, 100, 150], [255, 200, 50], [200, 100, 255], [255, 150, 80]];
-    const [fr, fg, fb] = colors[Math.floor(rng() * colors.length)];
-    setPixelSolid(data, w, fx, fy, 255, 230, 50, 220); // center
-    setPixelSolid(data, w, fx - 1, fy, fr, fg, fb, 200);
-    setPixelSolid(data, w, fx + 1, fy, fr, fg, fb, 200);
-    setPixelSolid(data, w, fx, fy - 1, fr, fg, fb, 200);
-    setPixelSolid(data, w, fx, fy + 1, fr, fg, fb, 200);
+  // Flowers at vine tips and edges
+  const flowerCount = Math.min(Math.floor(edgeOnly.length / 10), 12);
+  const flowerColors = [
+    [255, 90, 140], [255, 190, 50], [200, 90, 255],
+    [255, 140, 70], [255, 70, 70], [240, 180, 220],
+  ];
+  for (let f = 0; f < flowerCount; f++) {
+    const edge = edgeOnly[Math.floor(rng() * edgeOnly.length)];
+    const dist = Math.floor(rng() * 3) + 2;
+    const fx = edge.x + edge.dx * dist;
+    const fy = edge.y + edge.dy * dist;
+    const [fr, fg, fb] = flowerColors[Math.floor(rng() * flowerColors.length)];
+    // Center
+    setPixelSolid(data, w, fx, fy, 255, 230, 50, 230);
+    // Petals
+    setPixelSolid(data, w, fx - 1, fy, fr, fg, fb, 210);
+    setPixelSolid(data, w, fx + 1, fy, fr, fg, fb, 210);
+    setPixelSolid(data, w, fx, fy - 1, fr, fg, fb, 210);
+    setPixelSolid(data, w, fx, fy + 1, fr, fg, fb, 210);
+    // Larger flowers get diagonal petals
+    if (rng() > 0.4) {
+      const dr = Math.max(0, fr - 30), dg = Math.max(0, fg - 20), db = Math.max(0, fb - 20);
+      setPixelSolid(data, w, fx - 1, fy - 1, dr, dg, db, 170);
+      setPixelSolid(data, w, fx + 1, fy - 1, dr, dg, db, 170);
+      setPixelSolid(data, w, fx - 1, fy + 1, dr, dg, db, 170);
+      setPixelSolid(data, w, fx + 1, fy + 1, dr, dg, db, 170);
+    }
+    // Stem connecting flower to edge
+    const sx = edge.x + edge.dx, sy = edge.y + edge.dy;
+    setPixelSolid(data, w, sx, sy, 30, 80, 15, 200);
+    if (dist > 2) {
+      const mx = Math.round((sx + fx) / 2), my = Math.round((sy + fy) / 2);
+      setPixelSolid(data, w, mx, my, 30, 75, 15, 190);
+    }
+  }
+
+  return { data, width: w, height: h };
+}
+
+function applyPlantGrowthV2(srcImageData, seed) {
+  const pad = 30;
+  const { data: src, width: ow, height: oh } = srcImageData;
+  const { data, width: w, height: h } = expandCanvas(srcImageData, pad);
+  const rng = mulberry32(seed);
+
+  // Heavy green tint on existing pixels
+  for (let y = pad; y < pad + oh; y++) {
+    for (let x = pad; x < pad + ow; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] > 20) {
+        data[i] = Math.max(0, data[i] * 0.55 + 10);
+        data[i + 1] = Math.min(255, data[i + 1] * 0.7 + 50);
+        data[i + 2] = Math.max(0, data[i + 2] * 0.4);
+      }
+    }
+  }
+
+  const edges = findEdges(data, w, h, rng);
+  const edgeOnly = edges.filter((e) => e.edge);
+
+  // Dense moss on all surface edges
+  for (const edge of edgeOnly) {
+    if (rng() > 0.7) continue;
+    const mx = edge.x, my = edge.y;
+    const i = (my * w + mx) * 4;
+    if (data[i + 3] > 20) {
+      const g = 55 + Math.floor(rng() * 60);
+      data[i] = 15 + Math.floor(rng() * 20);
+      data[i + 1] = g;
+      data[i + 2] = 8 + Math.floor(rng() * 12);
+    }
+    // Moss also spills 1-2px outward
+    for (let m = 1; m <= (rng() > 0.5 ? 2 : 1); m++) {
+      const ox = edge.x + edge.dx * m, oy = edge.y + edge.dy * m;
+      const mg = 45 + Math.floor(rng() * 50);
+      setPixel(data, w, ox, oy, 18, mg, 10, Math.floor(180 - m * 50));
+    }
+  }
+
+  // Helper: grow a single vine with branching and leaves
+  function growVine(startX, startY, dirX, dirY, maxLen, thickness, depth) {
+    let vx = startX, vy = startY;
+    let dx = dirX, dy = dirY;
+    for (let i = 0; i < maxLen; i++) {
+      const t = i / maxLen;
+      const green = 60 + Math.floor(rng() * 100);
+      const stemR = 25 + Math.floor(rng() * 30);
+      const alpha = Math.floor(245 - t * 70);
+      setPixelSolid(data, w, vx, vy, stemR, green, 12, alpha);
+
+      // Thicker stems at base
+      if (thickness > 1 && t < 0.5) {
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          setPixel(data, w, vx, vy - 1, stemR - 5, green - 10, 10, alpha * 0.6);
+          setPixel(data, w, vx, vy + 1, stemR - 5, green - 10, 10, alpha * 0.6);
+        } else {
+          setPixel(data, w, vx - 1, vy, stemR - 5, green - 10, 10, alpha * 0.6);
+          setPixel(data, w, vx + 1, vy, stemR - 5, green - 10, 10, alpha * 0.6);
+        }
+      }
+
+      // Leaf clusters — frequent
+      if (rng() > 0.35 && i > 0) {
+        const ldir = rng() > 0.5 ? 1 : -1;
+        const leafG = green + 15 + Math.floor(rng() * 40);
+        const lr = 15 + Math.floor(rng() * 20);
+        const la = Math.max(80, alpha - 30);
+        const perp = Math.abs(dx) >= Math.abs(dy);
+        if (perp) {
+          setPixelSolid(data, w, vx, vy + ldir, lr, Math.min(255, leafG), 10, la);
+          setPixelSolid(data, w, vx, vy + ldir * 2, lr, Math.min(255, leafG + 15), 8, la - 30);
+          if (rng() > 0.4) setPixelSolid(data, w, vx + (rng() > 0.5 ? 1 : -1), vy + ldir, lr, Math.min(255, leafG + 8), 9, la - 20);
+          if (rng() > 0.6) setPixelSolid(data, w, vx, vy + ldir * 3, lr, Math.min(255, leafG + 20), 6, la - 60);
+        } else {
+          setPixelSolid(data, w, vx + ldir, vy, lr, Math.min(255, leafG), 10, la);
+          setPixelSolid(data, w, vx + ldir * 2, vy, lr, Math.min(255, leafG + 15), 8, la - 30);
+          if (rng() > 0.4) setPixelSolid(data, w, vx + ldir, vy + (rng() > 0.5 ? 1 : -1), lr, Math.min(255, leafG + 8), 9, la - 20);
+          if (rng() > 0.6) setPixelSolid(data, w, vx + ldir * 3, vy, lr, Math.min(255, leafG + 20), 6, la - 60);
+        }
+      }
+
+      // Sub-branch recursion
+      if (depth < 2 && rng() > 0.78 && i > 2 && i < maxLen - 2) {
+        const bDirX = Math.abs(dx) >= Math.abs(dy) ? 0 : (rng() > 0.5 ? 1 : -1);
+        const bDirY = Math.abs(dx) >= Math.abs(dy) ? (rng() > 0.5 ? 1 : -1) : 0;
+        growVine(vx + bDirX, vy + bDirY, bDirX || dx, bDirY || dy, Math.floor(rng() * 8) + 3, 1, depth + 1);
+      }
+
+      // Advance with wandering
+      vx += dx; vy += dy;
+      if (rng() > 0.45) { if (dx !== 0) vy += rng() > 0.5 ? 1 : -1; else vx += rng() > 0.5 ? 1 : -1; }
+      if (rng() > 0.8) { dx += Math.round(rng() - 0.5); dy += Math.round(rng() - 0.5); }
+      // Keep at least some direction
+      if (dx === 0 && dy === 0) { dx = dirX; dy = dirY; }
+    }
+
+    // Bushy tip cluster
+    for (let d = 0; d < 4 + Math.floor(rng() * 3); d++) {
+      const lx = vx + Math.round(rng() * 3 - 1.5);
+      const ly = vy + Math.round(rng() * 3 - 1.5);
+      const tg = 80 + Math.floor(rng() * 70);
+      setPixel(data, w, lx, ly, 18, Math.min(255, tg), 8, 170 + Math.floor(rng() * 40));
+    }
+  }
+
+  // Main vines from edges — lots of them, long reach
+  const vineCount = Math.min(Math.floor(edgeOnly.length / 4), 65);
+  for (let v = 0; v < vineCount; v++) {
+    const edge = edgeOnly[Math.floor(rng() * edgeOnly.length)];
+    const len = Math.floor(rng() * 18) + 8;
+    growVine(edge.x + edge.dx, edge.y + edge.dy, edge.dx, edge.dy, len, rng() > 0.5 ? 2 : 1, 0);
+  }
+
+  // Hanging vines — long, droopy, from top and sides
+  const hangCount = Math.min(Math.floor(edgeOnly.length / 6), 25);
+  for (let hv = 0; hv < hangCount; hv++) {
+    const edge = edgeOnly[Math.floor(rng() * edgeOnly.length)];
+    if (edge.dy > 0 && rng() > 0.3) continue;
+    let hx = edge.x + edge.dx;
+    let hy = edge.y + edge.dy;
+    const hangLen = Math.floor(rng() * 16) + 6;
+    for (let i = 0; i < hangLen; i++) {
+      const t = i / hangLen;
+      const green = 50 + Math.floor(rng() * 65);
+      const alpha = Math.floor(230 - t * 70);
+      setPixelSolid(data, w, hx, hy, 20, green, 12, alpha);
+      hy += 1;
+      if (rng() > 0.6) hx += rng() > 0.5 ? 1 : -1;
+      // Leaves along hanging vine
+      if (rng() > 0.55) {
+        const ld = rng() > 0.5 ? 1 : -1;
+        setPixelSolid(data, w, hx + ld, hy, 18, Math.min(255, green + 30), 10, alpha - 30);
+        if (rng() > 0.5) setPixelSolid(data, w, hx + ld * 2, hy, 15, Math.min(255, green + 40), 8, alpha - 60);
+      }
+    }
+    // Drip at bottom
+    setPixel(data, w, hx, hy, 15, 70, 10, 120);
+    setPixel(data, w, hx, hy + 1, 12, 55, 8, 80);
+  }
+
+  // Creeping ground cover — spread along the bottom area of the sprite
+  const bottomY = pad + oh;
+  const leftX = pad, rightX = pad + ow;
+  for (let x = leftX - 8; x < rightX + 8; x++) {
+    if (rng() > 0.4) continue;
+    const groundLen = Math.floor(rng() * 6) + 2;
+    for (let i = 0; i < groundLen; i++) {
+      const gy = bottomY + Math.floor(rng() * 4);
+      const gx = x + Math.round(rng() * 2 - 1);
+      const green = 50 + Math.floor(rng() * 70);
+      setPixel(data, w, gx, gy + i, 18, green, 10, Math.floor(160 - i * 25));
+    }
+  }
+
+  // Spreading canopy — leaves above the top
+  const topY = pad;
+  for (let x = leftX - 6; x < rightX + 6; x++) {
+    if (rng() > 0.45) continue;
+    const canopyLen = Math.floor(rng() * 5) + 1;
+    for (let i = 0; i < canopyLen; i++) {
+      const cx = x + Math.round(rng() * 2 - 1);
+      const cy = topY - 1 - i;
+      const green = 70 + Math.floor(rng() * 80);
+      setPixel(data, w, cx, cy, 20, Math.min(255, green), 10, Math.floor(170 - i * 30));
+    }
+  }
+
+  // Flowers — many, scattered across vines and edges
+  const flowerCount = Math.min(Math.floor(edgeOnly.length / 6), 20);
+  const flowerColors = [
+    [255, 85, 130], [255, 200, 50], [200, 85, 255],
+    [255, 130, 65], [255, 60, 60], [240, 175, 215],
+    [255, 255, 100], [180, 130, 255],
+  ];
+  for (let f = 0; f < flowerCount; f++) {
+    const edge = edgeOnly[Math.floor(rng() * edgeOnly.length)];
+    const dist = Math.floor(rng() * 6) + 2;
+    const fx = edge.x + edge.dx * dist + Math.round(rng() * 4 - 2);
+    const fy = edge.y + edge.dy * dist + Math.round(rng() * 4 - 2);
+    const [fr, fg, fb] = flowerColors[Math.floor(rng() * flowerColors.length)];
+
+    // Center
+    setPixelSolid(data, w, fx, fy, 255, 235, 50, 235);
+    // Cardinal petals
+    setPixelSolid(data, w, fx - 1, fy, fr, fg, fb, 215);
+    setPixelSolid(data, w, fx + 1, fy, fr, fg, fb, 215);
+    setPixelSolid(data, w, fx, fy - 1, fr, fg, fb, 215);
+    setPixelSolid(data, w, fx, fy + 1, fr, fg, fb, 215);
+    // Most flowers get diagonal petals too
+    if (rng() > 0.3) {
+      const dr = Math.max(0, fr - 35), dg = Math.max(0, fg - 25), db = Math.max(0, fb - 25);
+      setPixelSolid(data, w, fx - 1, fy - 1, dr, dg, db, 175);
+      setPixelSolid(data, w, fx + 1, fy - 1, dr, dg, db, 175);
+      setPixelSolid(data, w, fx - 1, fy + 1, dr, dg, db, 175);
+      setPixelSolid(data, w, fx + 1, fy + 1, dr, dg, db, 175);
+    }
+    // Large flowers get outer ring
+    if (rng() > 0.6) {
+      const lr = Math.max(0, fr - 60), lg = Math.max(0, fg - 50), lb = Math.max(0, fb - 50);
+      setPixel(data, w, fx - 2, fy, lr, lg, lb, 130);
+      setPixel(data, w, fx + 2, fy, lr, lg, lb, 130);
+      setPixel(data, w, fx, fy - 2, lr, lg, lb, 130);
+      setPixel(data, w, fx, fy + 2, lr, lg, lb, 130);
+    }
+    // Stem
+    const stemLen = Math.min(dist, 4);
+    for (let s = 1; s <= stemLen; s++) {
+      const sx = Math.round(edge.x + edge.dx * s + (fx - edge.x - edge.dx * dist) * (s / dist));
+      const sy = Math.round(edge.y + edge.dy * s + (fy - edge.y - edge.dy * dist) * (s / dist));
+      setPixel(data, w, sx, sy, 25, 75, 12, 200);
+    }
+  }
+
+  // Scattered spores / pollen particles in the air around the sprite
+  const sporeCount = Math.floor(rng() * 20) + 10;
+  for (let s = 0; s < sporeCount; s++) {
+    const sx = pad + Math.floor(rng() * ow) + Math.round(rng() * 20 - 10);
+    const sy = pad + Math.floor(rng() * oh) + Math.round(rng() * 20 - 10);
+    const pi = (sy * w + sx) * 4;
+    if (sx >= 0 && sx < w && sy >= 0 && sy < h && data[pi + 3] < 20) {
+      const sg = 120 + Math.floor(rng() * 80);
+      setPixel(data, w, sx, sy, 200, sg, 50, 60 + Math.floor(rng() * 60));
+    }
   }
 
   return { data, width: w, height: h };
@@ -474,6 +795,126 @@ function applyFire(srcImageData, seed) {
   return { data, width: w, height: h };
 }
 
+function applyFireV2(srcImageData, seed) {
+  const pad = 24;
+  const { data: src, width: ow, height: oh } = srcImageData;
+  const { data, width: w, height: h } = expandCanvas(srcImageData, pad);
+  const rng = mulberry32(seed);
+
+  // Hot tint on existing pixels — charred dark with orange/yellow highlights
+  for (let y = pad; y < pad + oh; y++) {
+    for (let x = pad; x < pad + ow; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] > 20) {
+        const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        data[i] = Math.min(255, lum * 0.4 + 80);
+        data[i + 1] = Math.min(255, lum * 0.25 + 25);
+        data[i + 2] = Math.max(0, lum * 0.08);
+      }
+    }
+  }
+
+  const edges = findEdges(data, w, h, rng);
+  const edgeOnly = edges.filter((e) => e.edge);
+
+  // Flame color at a given progress t (0=base, 1=tip)
+  function flameColor(t) {
+    if (t < 0.15) return [255, 255, 220];
+    if (t < 0.35) return [255, 240, 120];
+    if (t < 0.55) return [255, 180, 40];
+    if (t < 0.75) return [240, 100, 15];
+    return [180, 40, 5];
+  }
+
+  // Draw a tapered flame along a direction (dx,dy) with upward drift
+  function drawFlame(baseX, baseY, dirX, dirY, height, baseWidth, wobbleSeed) {
+    for (let i = 0; i < height; i++) {
+      const t = i / height;
+      const flameW = Math.max(1, Math.round(baseWidth * (1 - t * t)));
+      // Primary direction + always drifts upward
+      const upBias = -0.4;
+      const moveX = dirX * 0.6 + Math.sin(i * 0.8 + wobbleSeed * 3.7) * (1 + t * 1.5);
+      const moveY = dirY * 0.6 + upBias;
+      const cx = Math.round(baseX + moveX * i);
+      const cy = Math.round(baseY + moveY * i);
+
+      const [cr, cg, cb] = flameColor(t);
+      const alpha = Math.floor(245 * (1 - t * 0.6));
+
+      // Perpendicular axis for width
+      const perpX = -moveY, perpY = moveX;
+      const perpLen = Math.sqrt(perpX * perpX + perpY * perpY) || 1;
+      const pnx = perpX / perpLen, pny = perpY / perpLen;
+
+      const halfW = (flameW - 1) / 2;
+      for (let d = -Math.floor(halfW); d <= Math.ceil(halfW); d++) {
+        const distFromCenter = Math.abs(d) / Math.max(1, halfW);
+        const edgeFade = 1 - distFromCenter * 0.4;
+        const outerShift = distFromCenter * 0.3;
+        const pr = Math.min(255, cr * edgeFade - outerShift * 60);
+        const pg = Math.max(0, cg * edgeFade - outerShift * 80);
+        const pb = Math.max(0, cb * edgeFade);
+        const pa = Math.floor(alpha * (1 - distFromCenter * 0.3));
+        setPixel(data, w, Math.round(cx + pnx * d), Math.round(cy + pny * d), pr, pg, pb, pa);
+      }
+    }
+  }
+
+  // Flames from ALL edges — every direction
+  for (const edge of edgeOnly) {
+    if (rng() > 0.35) continue;
+    const height = Math.floor(rng() * 14) + 4;
+    const baseWidth = Math.floor(rng() * 3) + 2;
+    drawFlame(edge.x + edge.dx, edge.y + edge.dy, edge.dx, edge.dy, height, baseWidth, rng() * 100);
+  }
+
+  // Interior flames — fire bursting from within the sprite
+  for (const pt of edges) {
+    if (pt.edge) continue; // skip actual edges, we did those above
+    if (rng() > 0.04) continue;
+    const height = Math.floor(rng() * 10) + 3;
+    const baseWidth = Math.floor(rng() * 2) + 1;
+    drawFlame(pt.x, pt.y, pt.dx, pt.dy, height, baseWidth, rng() * 100);
+  }
+
+  // Inner glow — bright white-yellow on all edge surfaces
+  for (const edge of edgeOnly) {
+    if (rng() > 0.4) continue;
+    const i = (edge.y * w + edge.x) * 4;
+    if (data[i + 3] > 20) {
+      data[i] = Math.min(255, data[i] * 0.5 + 160);
+      data[i + 1] = Math.min(255, data[i + 1] * 0.4 + 120);
+      data[i + 2] = Math.min(255, data[i + 2] * 0.2 + 40);
+    }
+  }
+
+  // Embers scattered all around, not just above
+  const emberCount = Math.floor(rng() * 40) + 30;
+  for (let e = 0; e < emberCount; e++) {
+    const ex = pad + Math.floor(rng() * ow) + Math.round(rng() * 20 - 10);
+    const ey = pad + Math.floor(rng() * oh) + Math.round(rng() * 20 - 10);
+    if (ex >= 0 && ex < w && ey >= 0 && ey < h) {
+      const bright = rng();
+      if (bright > 0.5) {
+        setPixel(data, w, ex, ey, 255, 220, 80, Math.floor(rng() * 140) + 80);
+      } else {
+        setPixel(data, w, ex, ey, 255, 150, 30, Math.floor(rng() * 100) + 60);
+      }
+    }
+  }
+
+  // Heat haze all around
+  for (let hz = 0; hz < 25; hz++) {
+    const hx = pad + Math.floor(rng() * ow) + Math.round(rng() * 16 - 8);
+    const hy = pad + Math.floor(rng() * oh) + Math.round(rng() * 16 - 8);
+    if (hx >= 0 && hx < w && hy >= 0 && hy < h) {
+      setPixel(data, w, hx, hy, 255, 200, 100, Math.floor(rng() * 35) + 15);
+    }
+  }
+
+  return { data, width: w, height: h };
+}
+
 function applyFrozen(srcImageData, seed) {
   const pad = 14;
   const { data: src, width: ow, height: oh } = srcImageData;
@@ -536,67 +977,121 @@ function applyFrozen(srcImageData, seed) {
 }
 
 function applyElectric(srcImageData, seed) {
-  const pad = 12;
+  const pad = 50;
   const { data: src, width: ow, height: oh } = srcImageData;
   const { data, width: w, height: h } = expandCanvas(srcImageData, pad);
   const rng = mulberry32(seed);
 
-  // Electric blue tint
+  // Subtle electric tint — mostly preserve original colors
   for (let y = pad; y < pad + oh; y++) {
     for (let x = pad; x < pad + ow; x++) {
       const i = (y * w + x) * 4;
       if (data[i + 3] > 20) {
         const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-        data[i] = Math.min(255, lum * 0.3 + 20);
-        data[i + 1] = Math.min(255, lum * 0.5 + 40);
-        data[i + 2] = Math.min(255, lum * 0.7 + 80);
+        data[i] = Math.min(255, data[i] * 0.7 + lum * 0.2 + 10);
+        data[i + 1] = Math.min(255, data[i + 1] * 0.7 + lum * 0.2 + 10);
+        data[i + 2] = Math.min(255, data[i + 2] * 0.7 + lum * 0.15 + 25);
       }
     }
   }
 
   const edges = findEdges(data, w, h, rng);
 
-  // Lightning bolts from random edge points
-  for (let bolt = 0; bolt < 8; bolt++) {
-    const edge = edges[Math.floor(rng() * edges.length)];
-    let bx = edge.x + edge.dx;
-    let by = edge.y + edge.dy;
-    const boltLen = Math.floor(rng() * 12) + 5;
+  // Helper: draw a zigzag lightning segment from (x,y) in a direction
+  const drawBolt = (startX, startY, dirX, dirY, length, thickness, intensity) => {
+    let bx = startX, by = startY;
+    for (let i = 0; i < length; i++) {
+      const fade = intensity * (1 - (i / length) * 0.6);
+      const bright = Math.floor((220 + rng() * 35) * fade);
 
-    for (let i = 0; i < boltLen; i++) {
-      const bright = 200 + Math.floor(rng() * 55);
-      setPixelSolid(data, w, bx, by, bright, bright, 255, 250);
-      // Glow
-      setPixel(data, w, bx - 1, by, 80, 120, 255, 80);
-      setPixel(data, w, bx + 1, by, 80, 120, 255, 80);
-      setPixel(data, w, bx, by - 1, 80, 120, 255, 80);
-      setPixel(data, w, bx, by + 1, 80, 120, 255, 80);
+      // Core pixels
+      for (let t = 0; t < thickness; t++) {
+        const tx = dirY !== 0 ? t : 0;
+        const ty = dirX !== 0 ? t : 0;
+        setPixelSolid(data, w, bx + tx, by + ty, bright, bright, Math.min(255, bright + 30), 255);
+      }
 
-      // Jagged movement
-      const dir = Math.floor(rng() * 4);
-      if (dir === 0) bx += 1;
-      else if (dir === 1) bx -= 1;
-      else if (dir === 2) by += 1;
-      else by -= 1;
-
-      // Branch
-      if (rng() > 0.75) {
-        let brx = bx, bry = by;
-        for (let j = 0; j < 3; j++) {
-          brx += Math.floor(rng() * 3) - 1;
-          bry += Math.floor(rng() * 3) - 1;
-          setPixel(data, w, brx, bry, 150, 180, 255, 150);
+      // Glow halo — wider for thicker bolts
+      const glowR = thickness + 1;
+      const glowA = Math.floor(120 * fade);
+      for (let dx = -glowR; dx <= glowR; dx++) {
+        for (let dy = -glowR; dy <= glowR; dy++) {
+          const dist = Math.abs(dx) + Math.abs(dy);
+          if (dist > 0 && dist <= glowR) {
+            setPixel(data, w, bx + dx, by + dy, 120, 140, 220, Math.floor(glowA / dist));
+          }
         }
+      }
+
+      // Zigzag: sharp 90-degree jags every few pixels for that classic lightning look
+      if (i % (2 + Math.floor(rng() * 3)) === 0) {
+        // Perpendicular jag
+        const jag = Math.floor(rng() * 3) + 1;
+        const jdir = rng() > 0.5 ? 1 : -1;
+        for (let j = 0; j < jag; j++) {
+          if (dirX !== 0 || dirY !== 0) {
+            bx += dirY * jdir || (rng() > 0.5 ? 1 : -1);
+            by += dirX * jdir || (rng() > 0.5 ? 1 : -1);
+          }
+          setPixelSolid(data, w, bx, by, bright, bright, Math.min(255, bright + 30), 240);
+        }
+      }
+
+      // Continue in main direction
+      bx += dirX + (rng() > 0.7 ? (rng() > 0.5 ? 1 : -1) : 0);
+      by += dirY + (rng() > 0.7 ? (rng() > 0.5 ? 1 : -1) : 0);
+    }
+    return { x: bx, y: by };
+  };
+
+  // Major lightning bolts — big, thick, jagged
+  for (let bolt = 0; bolt < 10; bolt++) {
+    const edge = edges[Math.floor(rng() * edges.length)];
+    const boltLen = Math.floor(rng() * 25) + 30;
+    const end = drawBolt(edge.x + edge.dx, edge.y + edge.dy, edge.dx, edge.dy, boltLen, 2, 1.0);
+
+    // Fork into 2-3 sub-bolts at the end
+    const forks = Math.floor(rng() * 2) + 2;
+    for (let f = 0; f < forks; f++) {
+      const fdx = edge.dx + (rng() > 0.5 ? 1 : -1) * (rng() > 0.5 ? 1 : 0);
+      const fdy = edge.dy + (rng() > 0.5 ? 1 : -1) * (rng() > 0.5 ? 1 : 0);
+      drawBolt(end.x, end.y, Math.sign(fdx) || (rng() > 0.5 ? 1 : -1), Math.sign(fdy) || (rng() > 0.5 ? 1 : -1), Math.floor(rng() * 15) + 8, 1, 0.7);
+    }
+  }
+
+  // Medium branches along edges
+  for (let bolt = 0; bolt < 12; bolt++) {
+    const edge = edges[Math.floor(rng() * edges.length)];
+    const boltLen = Math.floor(rng() * 15) + 10;
+    drawBolt(edge.x + edge.dx, edge.y + edge.dy, edge.dx, edge.dy, boltLen, 1, 0.8);
+  }
+
+  // Spark clusters — groups of bright dots that look like electric sparks
+  for (let s = 0; s < 25; s++) {
+    const edge = edges[Math.floor(rng() * edges.length)];
+    const cx = edge.x + edge.dx * Math.floor(rng() * 8 + 2);
+    const cy = edge.y + edge.dy * Math.floor(rng() * 8 + 2);
+    // Each spark is a small cross or star shape
+    const sparkBright = Math.floor(rng() * 55) + 200;
+    setPixelSolid(data, w, cx, cy, sparkBright, sparkBright, Math.min(255, sparkBright + 20), 255);
+    // 2-4 pixel rays in random directions
+    const rays = Math.floor(rng() * 3) + 2;
+    for (let r = 0; r < rays; r++) {
+      const rdx = Math.floor(rng() * 3) - 1;
+      const rdy = Math.floor(rng() * 3) - 1;
+      const rlen = Math.floor(rng() * 3) + 1;
+      for (let p = 1; p <= rlen; p++) {
+        setPixel(data, w, cx + rdx * p, cy + rdy * p, 200, 210, 230, Math.floor(200 / p));
       }
     }
   }
 
-  // Spark particles
-  for (let s = 0; s < 12; s++) {
+  // Scattered distant spark particles
+  for (let s = 0; s < 40; s++) {
     const edge = edges[Math.floor(rng() * edges.length)];
-    const sx = edge.x + Math.floor(rng() * 10 - 5);
-    const sy = edge.y + Math.floor(rng() * 10 - 5);
-    setPixel(data, w, sx, sy, 200, 220, 255, Math.floor(rng() * 180) + 70);
+    const sx = edge.x + Math.floor(rng() * 40 - 20);
+    const sy = edge.y + Math.floor(rng() * 40 - 20);
+    setPixel(data, w, sx, sy, 210, 220, 235, Math.floor(rng() * 180) + 70);
   }
 
   return { data, width: w, height: h };
@@ -953,18 +1448,20 @@ function applyBubbles(srcImageData, seed) {
 // ─── Style registry ───
 const STYLES = [
   { id: "spikes", name: "Spikes", desc: "Sharp dark protrusions", icon: "🗡️", apply: applySpikes },
+  { id: "chaos_spikes", name: "Chaos Spikes", desc: "Wild jagged eruptions", icon: "💥", apply: applyChaosSpikes },
   { id: "poison", name: "Poison", desc: "Toxic drips & bubbles", icon: "☠️", apply: applyPoison },
+  { id: "slime", name: "Slime", desc: "Gooey dripping ooze", icon: "🟢", apply: applySlime },
   { id: "wood", name: "Wood", desc: "Grain, bark & knots", icon: "🪵", apply: applyWood },
   { id: "plant", name: "Plant Growth", desc: "Vines, leaves & flowers", icon: "🌿", apply: applyPlantGrowth },
+  { id: "plant_v2", name: "Plant Growth v2", desc: "Overgrown jungle takeover", icon: "🌳", apply: applyPlantGrowthV2 },
   { id: "crystal", name: "Crystal", desc: "Gemstone shards", icon: "💎", apply: applyCrystal },
   { id: "fire", name: "Fire", desc: "Flames & embers", icon: "🔥", apply: applyFire },
+  { id: "fire_v2", name: "Fire v2", desc: "Tapered rising flames", icon: "🌋", apply: applyFireV2 },
   { id: "frozen", name: "Frozen", desc: "Icicles & frost", icon: "❄️", apply: applyFrozen },
   { id: "electric", name: "Electric", desc: "Lightning & sparks", icon: "⚡", apply: applyElectric },
   { id: "corruption", name: "Corruption", desc: "Glitched decay", icon: "👾", apply: applyCorruption },
   { id: "stone", name: "Stone", desc: "Rock texture & cracks", icon: "🪨", apply: applyStone },
   { id: "shadow", name: "Shadow", desc: "Dark smoke & wisps", icon: "🌑", apply: applyShadow },
-  { id: "slime", name: "Slime", desc: "Gooey dripping ooze", icon: "🟢", apply: applySlime },
-  { id: "chaos_spikes", name: "Chaos Spikes", desc: "Wild jagged eruptions", icon: "💥", apply: applyChaosSpikes },
   { id: "bubbles", name: "Bubbles", desc: "Iridescent floating orbs", icon: "🫧", apply: applyBubbles },
 ];
 

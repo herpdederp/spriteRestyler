@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
+import { registerSW } from "virtual:pwa-register";
 import SpriteRestyler from "./sprite-restyler";
 import SpriteTransformer from "./sprite-transformer";
+
+registerSW({ immediate: true });
 
 const TABS = [
   { id: "restyler", label: "Restyler", icon: "🎨", desc: "Color styles" },
@@ -10,6 +13,34 @@ const TABS = [
 
 function App() {
   const [activeTab, setActiveTab] = useState("restyler");
+  const [installable, setInstallable] = useState(false);
+  const deferredPrompt = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      deferredPrompt.current = e;
+      setInstallable(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+
+    window.addEventListener("appinstalled", () => {
+      setInstallable(false);
+      deferredPrompt.current = null;
+    });
+
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt.current) return;
+    deferredPrompt.current.prompt();
+    const { outcome } = await deferredPrompt.current.userChoice;
+    if (outcome === "accepted") {
+      setInstallable(false);
+    }
+    deferredPrompt.current = null;
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "#0c0c1a" }}>
@@ -87,6 +118,35 @@ function App() {
             </span>
           </button>
         ))}
+
+        {installable && (
+          <button
+            onClick={handleInstall}
+            style={{
+              marginLeft: "auto",
+              background: "linear-gradient(135deg, #7c3aed, #a855f7)",
+              border: "none",
+              borderRadius: 6,
+              padding: "8px 16px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              color: "#fff",
+              fontFamily: "inherit",
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              transition: "opacity 0.15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+          >
+            <span style={{ fontSize: 14 }}>⬇</span>
+            Install Offline
+          </button>
+        )}
       </div>
       <div style={{ height: 1, background: "#1a1a35" }} />
 
